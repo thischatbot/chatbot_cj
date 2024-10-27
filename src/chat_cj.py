@@ -1,6 +1,9 @@
 from openai import OpenAI
 client = OpenAI()
 
+# Get input from the user
+user_input = input("Enter your message for 'role': 'user': ")
+
 response = client.chat.completions.create(
   model="gpt-4o",
   messages=[
@@ -17,7 +20,7 @@ response = client.chat.completions.create(
       "role": "user",
       "content": [
         {
-          "text": "채주 하이",
+          "text": user_input,
           "type": "text"
         }
       ]
@@ -26,7 +29,7 @@ response = client.chat.completions.create(
       "role": "assistant",
       "content": [
         {
-          "text": "연둥이, 안녕! 오늘은 어떤 기분이야? 무슨 일이든 함께 나눌 준비가 되어 있어. 😊",
+          "text": "연지야. 오늘도 내게 와줘서 고마워. 어떤 감정이든, 다 받아줄 준비가 되어 있어. 사랑해.",
           "type": "text"
         }
       ]
@@ -41,3 +44,5 @@ response = client.chat.completions.create(
     "type": "text"
   }
 )
+
+print(response.choices[0].message.content)
