@@ -76,75 +76,77 @@ def run_tts(text: str):
                               input=text)
   response.stream_to_file(speech_file_path)
   play_mp3(speech_file_path)
-# Get input from the user
-user_input = input("Enter your message for 'role': 'user': ")
+  
+while True :
+  # Get input from the user
+  user_input = input("Enter your message for 'role': 'user': ")
 
-with client.chat.completions.with_streaming_response.create(
-  model="gpt-4o",
-  messages=[
-    {
-      "role": "system",
-      "content": [
-        {
-          "text": instruction_system,
-          "type": "text"
-        }
-      ]
-    },
-    {
-      "role": "user",
-      "content": [
-        {
-          "text": user_input,
-          "type": "text"
-        }
-      ]
-    },
-    {
-      "role": "assistant",
-      "content": [
-        {
-          "text": instruction_assistant,
-          "type": "text"
-        }
-      ]
+  with client.chat.completions.with_streaming_response.create(
+    model="gpt-4o",
+    messages=[
+      {
+        "role": "system",
+        "content": [
+          {
+            "text": instruction_system,
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "text": user_input,
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "text": instruction_assistant,
+            "type": "text"
+          }
+        ]
+      }
+    ],
+    temperature=0.4,
+    max_tokens=2048,
+    top_p=0.5,
+    frequency_penalty=0,
+    presence_penalty=0,
+    response_format={
+      "type": "text"
     }
-  ],
-  temperature=0.4,
-  max_tokens=2048,
-  top_p=0.5,
-  frequency_penalty=0,
-  presence_penalty=0,
-  response_format={
-    "type": "text"
-  }
-) as response :
-  # Collect all lines into a single list
-  lines = []
+  ) as response :
+    # Collect all lines into a single list
+    lines = []
 
-  # Gather all lines of the response
-  for line in response.iter_lines():
-      if line:  # Ignore empty lines
-          lines.append(line.strip())
+    # Gather all lines of the response
+    for line in response.iter_lines():
+        if line:  # Ignore empty lines
+            lines.append(line.strip())
 
-  # Join all lines into a single JSON string
-  json_string = "\n".join(lines)
+    # Join all lines into a single JSON string
+    json_string = "\n".join(lines)
 
-  # Now parse the entire JSON object once it's complete
-  try:
-      response_data = json.loads(json_string)
-      
-      # Access the assistant's message content
-      assistant_response_text = response_data['choices'][0]['message']['content']
-      
-      # Print or further process the response
-      print(assistant_response_text)
-  except json.JSONDecodeError as e:
-      print("Error decoding JSON:", e)
-    
-response_sentences = re.split(r'(?<=[.!?])\s+', assistant_response_text)
+    # Now parse the entire JSON object once it's complete
+    try:
+        response_data = json.loads(json_string)
 
-# Pass each sentence to run_tts
-for sentence in response_sentences:
-  print(sentence)
-  run_tts(sentence)
+        # Access the assistant's message content
+        assistant_response_text = response_data['choices'][0]['message']['content']
+
+        # Print or further process the response
+        print(assistant_response_text)
+    except json.JSONDecodeError as e:
+        print("Error decoding JSON:", e)
+
+  response_sentences = re.split(r'(?<=[.!?])\s+', assistant_response_text)
+
+  # Pass each sentence to run_tts
+  for sentence in response_sentences:
+    print(sentence)
+    run_tts(sentence)
