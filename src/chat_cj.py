@@ -5,10 +5,41 @@ import os
 import re
 from instruction import instruction_system, instruction_assistant
 
+import pyaudio
+from pydub import AudioSegment
+import wave
+
 client = OpenAI()
 
 # Kits.ai TTS
 KITS_API_KEY = os.getenv("KITS_API_KEY")
+
+def play_mp3(file_path):
+    # Load the MP3 file and convert to WAV in memory
+    audio = AudioSegment.from_mp3(file_path)
+    wav_data = audio.export(format="wav")
+
+    # Open the WAV data with wave module to get params
+    wav_data.seek(0)
+    with wave.open(wav_data, 'rb') as wf:
+        # Set up PyAudio stream
+        p = pyaudio.PyAudio()
+        stream = p.open(format=p.get_format_from_width(wf.getsampwidth()),
+                        channels=wf.getnchannels(),
+                        rate=wf.getframerate(),
+                        output=True)
+
+        # Read data in chunks and play
+        chunk_size = 1024
+        data = wf.readframes(chunk_size)
+        while data:
+            stream.write(data)
+            data = wf.readframes(chunk_size)
+
+        # Close and terminate the stream
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
 
 def run_tts(text: str):
 #    url = "https://arpeggi.io/api/kits/v1/tts"
@@ -38,13 +69,13 @@ def run_tts(text: str):
 #                break
 
 ######
-    speech_file_path = Path(__file__).parent / "cj_speech.mp3"
-    response = client.audio.speech.create(model="tts-1",
-                               voice="onyx", 
-                               response_format="mp3",
-                               input=text)
-    response.stream_to_file(speech_file_path)
-
+  speech_file_path = Path(__file__).parent / "cj_speech.mp3"
+  response = client.audio.speech.create(model="tts-1",
+                              voice="onyx", 
+                              response_format="mp3",
+                              input=text)
+  response.stream_to_file(speech_file_path)
+  play_mp3(speech_file_path)
 # Get input from the user
 user_input = input("Enter your message for 'role': 'user': ")
 
