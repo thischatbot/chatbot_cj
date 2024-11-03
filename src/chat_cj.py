@@ -1,18 +1,82 @@
-import json
-from pathlib import Path
 from openai import OpenAI
+from pathlib import Path
 import os
 import re
-from instruction import instruction_system, instruction_assistant
+
+import json
+import requests
 
 import pyaudio
 from pydub import AudioSegment
 import wave
 
+from instruction import instruction_system, instruction_assistant
+
+
 client = OpenAI()
 
+# OpenAI API key
+API_KEY = os.getenv("OPENAI_API_KEY")
 # Kits.ai TTS
 KITS_API_KEY = os.getenv("KITS_API_KEY")
+
+
+# Audio settings
+CHUNK = 1024  # Buffer size
+FORMAT = pyaudio.paInt16  # Audio format
+CHANNELS = 1  # Mono audio
+RATE = 16000  # Sample rate (required by OpenAI)
+RECORD_SECONDS = 5  # Duration of the recording
+TEMP_WAV_FILE = "temp_audio.wav"
+
+def record_audio():
+    """Record audio from the microphone and save to a temporary WAV file."""
+    p = pyaudio.PyAudio()
+    stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+    
+    print("Recording...")
+    frames = []
+
+    for _ in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
+        data = stream.read(CHUNK)
+        frames.append(data)
+
+    print("Recording finished.")
+
+    # Stop and close the stream
+    stream.stop_stream()
+    stream.close()
+    p.terminate()
+
+    # Save the recorded data as a WAV file
+    with wave.open(TEMP_WAV_FILE, "wb") as wf:
+        wf.setnchannels(CHANNELS)
+        wf.setsampwidth(p.get_sample_size(FORMAT))
+        wf.setframerate(RATE)
+        wf.writeframes(b"".join(frames))
+
+def transcribe_audio(file_path):
+    """Send audio file to OpenAI and receive transcription."""
+    headers = {
+        "Authorization": f"Bearer {API_KEY}"
+    }
+
+    # Open the file in binary mode for sending
+    with open(file_path, "rb") as audio_file:
+        files = {
+            "file": audio_file,
+            "model": (None, "whisper-1")  # Specify the model
+        }
+        response = requests.post("https://api.openai.com/v1/audio/transcriptions", headers=headers, files=files)
+
+    if response.status_code == 200:
+        # Parse and print the transcription
+        transcription = response.json()["text"]
+        print("Transcription:", transcription)
+        return transcription
+    else:
+        print("Error:", response.status_code, response.text)
+        return None
 
 def play_mp3(file_path):
     # Load the MP3 file and convert to WAV in memory
@@ -79,7 +143,10 @@ def run_tts(text: str):
   
 while True :
   # Get input from the user
-  user_input = input("Enter your message for 'role': 'user': ")
+  #user_input = input("Enter your message for 'role': 'user': ")
+  record_audio()
+  user_input = transcribe_audio(TEMP_WAV_FILE)
+  os.remove(TEMP_WAV_FILE)
 
   with client.chat.completions.with_streaming_response.create(
     model="gpt-4o",
