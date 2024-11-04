@@ -11,7 +11,7 @@ from pydub import AudioSegment
 import wave
 
 from instruction import instruction_system, instruction_assistant
-
+from emotion_cj import *
 
 client = OpenAI()
 
@@ -105,7 +105,7 @@ def play_mp3(file_path):
         stream.close()
         p.terminate()
 
-def run_tts(text: str):
+def run_tts(text: str, emotion=Emotion.NEUTRAL):
 #    url = "https://arpeggi.io/api/kits/v1/tts"
 #    voice_model_id = '1508262'  # Cheju ID
 #    files = {
@@ -133,6 +133,13 @@ def run_tts(text: str):
 #                break
 
 ######
+  if emotion == Emotion.HAPPY:
+        # Use a cheerful TTS voice model or setting
+        pass
+  elif emotion == Emotion.SAD:
+        # Use a softer, slower TTS voice model or setting
+        pass
+
   speech_file_path = Path(__file__).parent / "cj_speech.mp3"
   response = client.audio.speech.create(model="tts-1",
                               voice="onyx", 
@@ -215,5 +222,6 @@ while True :
 
   # Pass each sentence to run_tts
   for sentence in response_sentences:
-    print(sentence)
+    emotion = classify_emotion(sentence)
+    print(f"Sentence: {sentence} | Emotion: {emotion}")
     run_tts(sentence)
