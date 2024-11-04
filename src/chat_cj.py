@@ -11,7 +11,7 @@ from pydub import AudioSegment
 import wave
 
 from instruction import instruction_system, instruction_assistant
-
+from emotion_cj import *
 
 client = OpenAI()
 
@@ -215,5 +215,6 @@ while True :
 
   # Pass each sentence to run_tts
   for sentence in response_sentences:
-    print(sentence)
+    emotion = classify_emotion(sentence)
+    print(f"Sentence: {sentence} | Emotion: {emotion}")
     run_tts(sentence)
