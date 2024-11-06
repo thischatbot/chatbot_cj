@@ -34,4 +34,6 @@ def classify_emotion(sentence):
         # Default to NEUTRAL if the response is unexpected
         emotion = Emotion.NEUTRAL
     
+    emotion = response.choices[0].message.content
+    #emotion = response['choices'][0]['message']['content'].strip()
     return emotion
