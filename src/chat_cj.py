@@ -21,6 +21,7 @@ API_KEY = os.getenv("OPENAI_API_KEY")
 KITS_API_KEY = os.getenv("KITS_API_KEY")
 
 
+
 # Audio settings
 CHUNK = 1024  # Buffer size
 FORMAT = pyaudio.paInt16  # Audio format
@@ -105,6 +106,13 @@ def play_mp3(file_path):
         stream.close()
         p.terminate()
 
+def get_audio_length(file_path):
+    # Load the MP3 file
+    audio = AudioSegment.from_mp3(file_path)
+    # Get the length of the audio in seconds
+    length_in_seconds = len(audio) / 1000  # Convert from milliseconds to seconds
+    return length_in_seconds
+
 def run_tts(text: str, emotion=Emotion.NEUTRAL):
 #    url = "https://arpeggi.io/api/kits/v1/tts"
 #    voice_model_id = '1508262'  # Cheju ID
@@ -147,6 +155,7 @@ def run_tts(text: str, emotion=Emotion.NEUTRAL):
                               input=text)
   response.stream_to_file(speech_file_path)
   play_mp3(speech_file_path)
+  return get_audio_length(speech_file_path)
   
 while True :
   # Get input from the user
@@ -224,4 +233,5 @@ while True :
   for sentence in response_sentences:
     emotion = classify_emotion(sentence)
     print(f"Sentence: {sentence} | Emotion: {emotion}")
-    run_tts(sentence)
+    tts_len = run_tts(sentence)
+    print(f"Length:{tts_len}")
