@@ -137,8 +137,8 @@ def run_tts(text: str, emotion=Emotion.NEUTRAL):
         # Use a cheerful TTS voice model or setting
         pass
   elif emotion == Emotion.SAD:
-        # Use a softer, slower TTS voice model or setting
-        pass
+      # Use a softer, slower TTS voice model or setting
+      pass
 
   speech_file_path = Path(__file__).parent / "cj_speech.mp3"
   response = client.audio.speech.create(model="tts-1",

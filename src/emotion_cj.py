@@ -2,6 +2,15 @@ import re
 from openai import OpenAI
 import os
 
+from enum import Enum
+
+class Emotion(Enum):
+    NEUTRAL = "Neutral"
+    HAPPY = "Happy"
+    SURPRISED = "Surprised"
+    SAD = "Sad"
+    ANGRY = "Angry"
+    
 # Set up OpenAI API key
 #client = OpenAI()
 API_KEY = os.getenv("OPENAI_API_KEY")
@@ -17,6 +26,12 @@ def classify_emotion(sentence):
     )
 
     # Extract emotion classification from the response
-    emotion = response.choices[0].message.content
-    #emotion = response['choices'][0]['message']['content'].strip()
+    emotion_text = response.choices[0].message.content
+    
+    try:
+        emotion = Emotion(emotion_text.upper())
+    except ValueError:
+        # Default to NEUTRAL if the response is unexpected
+        emotion = Emotion.NEUTRAL
+    
     return emotion
