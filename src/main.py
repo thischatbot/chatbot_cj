@@ -35,4 +35,4 @@ records = cursor.fetchall()
 #저장된 데이터 출력
 print("\n📌 저장된 감정 기록:")
 for row in records:
-    print(f"{row[2]} - {row[0]} : {row}")
+    print(f"{row[2]} - {row[0]} : {row[1]}")
