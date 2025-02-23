@@ -27,3 +27,12 @@ cursor.execute("INSERT INTO user_emotions (name, emotion, timestamp) VALUES (?, 
 conn.commit()
 
 print(f"{name}님의 감정 '{emotion}'이(가) 저장되었습니다.")
+
+#최근 감정 기록 불러오기
+cursor.execute("SELECT name, emotion, timestamp FROM user_emotions ORDER BY timestamp DESC")
+records = cursor.fetchall()
+
+#저장된 데이터 출력
+print("\n📌 저장된 감정 기록:")
+for row in records:
+    print(f"{row[2]} - {row[0]} : {row}")
