@@ -39,6 +39,25 @@ def analyze_emotion(text):
     
     return result
 
+def generate_response(user_name, emotion_result):
+    """사용자의 감정에 따라 GPT가 다른 반응을 하도록 설정"""
+    
+    # 감정에 따른 프롬프트 설정
+    if emotion_result == "긍정":
+        prompt = f"{user_name}님이 기분이 좋아 보이네요! 좋은 일이 있었나요?"
+    elif emotion_result == "부정":
+        prompt = f"{user_name}님, 힘들어 보이네요. 괜찮으신가요? 무슨 일 있었나요?"
+    else: #중립
+        prompt = f"{user_name}님, 오늘 하루는 어땠나요?"
+        
+    # GPT API 호출
+    response = openai.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "system", "content": "너는 감정을 고려해 대화하는 AI 챗봇이다."},
+                {"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content.strip()
+
 # SQLite DB 연결 (없으면 자동 생성됨)
 conn = sqlite3.connect("emotions.db")
 cursor = conn.cursor()
@@ -61,6 +80,11 @@ timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S") # 현재 시간 기록
 
 #GPT를 사용한 감정 분석 
 analyzed_emotion = analyze_emotion(emotion)
+print(f"🔍 감정 분석 결과: {analyzed_emotion}")
+
+#감정에 맞는 GPT 응답 생성
+emotion_result = generate_response(name, analyzed_emotion)
+print(f"🔍 감정 분석 결과: {emotion_result}")
 
 #데이터 삽입
 cursor.execute("INSERT INTO user_emotions (name, emotion, timestamp) VALUES (?, ?, ?)",
