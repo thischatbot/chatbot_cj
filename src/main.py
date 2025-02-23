@@ -11,7 +11,7 @@ openai.api_key = OPENAI_API_KEY
 def analyze_emotion(text):
     """GPT API를 사용해 감정을 분석하는 함수"""
     prompt = f"""
-    입력 문장의 감정을 분석해줘.
+    다음 문장의 감정을 분석해줘.
     오직 아래 중 하나만 출력해:
     - 긍정
     - 부정
@@ -23,7 +23,7 @@ def analyze_emotion(text):
     
     response = openai.chat.completions.create(
         model="gpt-3.5-turbo",
-        messages=[{"role": "system", "content": "너는 감정 분석 AI다."},
+        messages=[{"role": "system", "content": "너는 감정 분석 AI다. 반드시 '긍정', '부정', '중립' 중 하나만 출력해."},
                 {"role": "user", "content": prompt}]
     )
     
@@ -44,16 +44,16 @@ def generate_response(user_name, emotion_result):
     
     # 감정에 따른 프롬프트 설정
     if emotion_result == "긍정":
-        prompt = f"{user_name}님이 기분이 좋아 보이네요! 좋은 일이 있었나요?"
+        prompt = f"{user_name}님, 기분이 좋아 보이네요! 좋은 하루였나 봐요."
     elif emotion_result == "부정":
-        prompt = f"{user_name}님, 힘들어 보이네요. 괜찮으신가요? 무슨 일 있었나요?"
-    else: #중립
-        prompt = f"{user_name}님, 오늘 하루는 어땠나요?"
+        prompt = f"{user_name}님, 힘든 하루였나요? 너무 무리하지 마세요."
+    else:  # 중립
+        prompt = f"{user_name}님, 오늘 하루 무난했나요?"
         
     # GPT API 호출
     response = openai.chat.completions.create(
         model="gpt-3.5-turbo",
-        messages=[{"role": "system", "content": "너는 감정을 고려해 대화하는 AI 챗봇이다."},
+        messages=[{"role": "system", "content": "너는 감정을 고려해 대화하는 개인용 AI 챗봇이다. 한 사람을 대상으로 말해라."},
                 {"role": "user", "content": prompt}]
     )
     return response.choices[0].message.content.strip()
@@ -84,7 +84,7 @@ print(f"🔍 감정 분석 결과: {analyzed_emotion}")
 
 #감정에 맞는 GPT 응답 생성
 emotion_result = generate_response(name, analyzed_emotion)
-print(f"🔍 감정 분석 결과: {emotion_result}")
+print(f"🤖 챗봇 응답: {emotion_result}")
 
 #데이터 삽입
 cursor.execute("INSERT INTO user_emotions (name, emotion, timestamp) VALUES (?, ?, ?)",
