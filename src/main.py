@@ -1,5 +1,26 @@
 import sqlite3
 from datetime import datetime
+from api_key import OPENAI_API_KEY
+import openai
+
+#OpenAI API 키 설정
+openai.api_key = OPENAI_API_KEY
+
+def analyze_emotion(text):
+    """GPT API를 사용해 감정을 분석하는 함수"""
+    prompt = f"다음 문장의 감정을 분석해줘: '{text}'\n'긍정', '부정', '중립' 중 하나로 답해줘."
+    
+    response = openai.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "system", "content": "너는 감정 분석 전문가야."},
+                {"role": "user", "content": prompt}]
+    )
+    
+    result = response.choices[0].message.content.strip()
+    return result
+
+#실행 테스트
+#print(analyze_emotion("오늘 너무 기분이 좋아!"))
 
 # SQLite DB 연결 (없으면 자동 생성됨)
 conn = sqlite3.connect("emotions.db")
