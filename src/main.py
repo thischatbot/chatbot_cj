@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import sqlite3
 from datetime import datetime
-from api_key import OPENAI_API_KEY
 import openai
 import os
 from typing import Dict
