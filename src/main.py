@@ -74,4 +74,28 @@ def analyze_emotion_api(request: EmotionRequest):
         "analyzed_emotion": emotion_result,
         "timestamp": timestamp
     }
+
+@app.get("/get_memory/{user_name}")
+def get_user_emotions(user_name: str):
+    """SQLite에서 특정 사용자의 감정 기록을 조회하는 API"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
     
+    #가장 최근 감정 기록을 5개까지 가져오기
+    cursor.execute("""
+                SELECT timestamp, emotion FROM user_emotions
+                WHERE name = ?
+                ORDER BY timestamp DESC
+                LIMIT 5
+    """, (user_name,))
+    
+    records = cursor.fetchall()
+    conn.close()
+    
+    if not records:
+        return {"user": user_name, "message": "감정 기록이 없습니다."}
+    
+    return {
+        "user": user_name,
+        "emotions": [{"timestamp": row[0], "emotion": row[1]} for row in records]
+    } 
