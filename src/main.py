@@ -4,11 +4,20 @@ import sqlite3
 from datetime import datetime
 from api_key import OPENAI_API_KEY
 import openai
+import os
 from typing import Dict
 
 app = FastAPI()
 
 #OpenAI API 키 설정
+import openai
+import os
+
+# 환경변수에서 API 키 가져오기 (없으면 에러 방지)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise ValueError("🚨 OPENAI_API_KEY 환경변수가 설정되지 않았습니다.")
+
 openai.api_key = OPENAI_API_KEY
 
 # SQListe DB 연결
