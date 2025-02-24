@@ -20,7 +20,23 @@ if not OPENAI_API_KEY:
 openai.api_key = OPENAI_API_KEY
 
 # SQListe DB 연결
-DB_PATH = "../emotions.db"
+DB_PATH = "/app/emotions.db"
+
+
+# SQLite DB 연결 (없으면 자동 생성됨)
+conn = sqlite3.connect("emotions.db")
+cursor = conn.cursor()
+
+# 테이블 생성 (한 번만 실행하면 됨)
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS user_emotions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    emotion TEXT,
+    timestamp TEXT
+)               
+""")
+conn.commit()
 
 # 요청 데이터 모델 정의 (JSON Body에서 받기)
 class EmotionRequest(BaseModel):
