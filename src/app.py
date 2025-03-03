@@ -49,7 +49,13 @@ def setup_faiss_rag():
     data = cursor.fetchall()
     conn.close()
     
-    documents = [Document(page_content=row[1], metadata={"user": row[0]}) for row in data]
+    documents = []
+    for row in data:
+        user_name, chat_history = row
+        emotion = analyze_emotion(chat_history)
+        doc = Document(page_content=chat_history, metadata={"user": user_name, "emotion": emotion})
+        documents.append(doc)
+
     vectorstore = FAISS.from_documents(documents, OpenAIEmbeddings())
     return vectorstore.as_retriever()
 
