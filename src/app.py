@@ -92,8 +92,10 @@ class Chatbot:
         self.user_name = user_name
         self.session_id = f"session_{user_name}" # 사용자별 session_id 추가
         self.memory = ChatMessageHistory() #대화 기록 저장용
-        self.set_chatbot_personality()
-        #self.load_memory()
+        self.load_memory()
+    
+        if not self.memory.messages:
+            self.set_chatbot_personality()
     
     def set_chatbot_personality(self):
         """챗봇의 성격을 강제로 저장"""
@@ -105,12 +107,12 @@ class Chatbot:
         )
         
         # 사용자의 입력 없이 기본 성격을 대화 히스토리에 추가
-        self.memory.add_user_message("기본 설정")  
-        self.memory.add_ai_message(intro_message)
+        if not self.memory.messages:
+            self.memory.add_user_message("기본 설정")  
+            self.memory.add_ai_message(intro_message)
     
     def get_session_history(self, session_id):
         """LangChain에서 요구하는 세션 히스토리 함수"""
-        self.set_chatbot_personality()
         return self.memory
     
     def save_memory(self):
@@ -138,11 +140,14 @@ class Chatbot:
     
     def chat(self, user_input):
         """ 최신 LangChain 방식으로 대화 실행 """
+        self.load_memory() #대화 시작 전에 히스토리 로드
+        
         agent = RunnableWithMessageHistory(llm, get_session_history=self.get_session_history) #callable 함수 전달
         response = agent.invoke(user_input, config={"configurable": {"session_id": self.session_id}}) #invoke() 사용
         
         self.memory.add_user_message(user_input)
         self.memory.add_ai_message(response)
+        
         self.save_memory()
         return response.content
 
@@ -159,8 +164,8 @@ def chat_endpoint(request: ChatRequest):
     recent_emotions = get_recent_emotions(request.user_name)
     
     #최근 대화 기록 불러오기
-    chatbot.load_memory()
-    conversation_history = chatbot.memory.messages
+    #chatbot.load_memory()
+    #conversation_history = chatbot.memory.messages
     
     #연속된 부정 감정 감지 (최근 3개 중 2개 이상이 "부정"이면 경고)
     recent_negative_emotions = [e for e in recent_emotions if "부정" in e["emotion"]]
@@ -181,7 +186,6 @@ def chat_endpoint(request: ChatRequest):
             "message": request.message,
             "emotion" : emotion_result,
             "recent_emotions": recent_emotions,
-            "conversation_history": conversation_history,
             "warning": warning_message,
             "response": response}
 
