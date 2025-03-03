@@ -34,7 +34,8 @@ def create_database():
     conn.commit()
     conn.close()
     print("SQLite DB 및 테이블 생성 완료")
-    
+
+
 # API 요청 모델
 class ChatRequest(BaseModel):
     user_name: str
@@ -46,7 +47,20 @@ class Chatbot:
         self.user_name = user_name
         self.session_id = f"session_{user_name}" # 사용자별 session_id 추가
         self.memory = ChatMessageHistory() #대화 기록 저장용
+        self.initialize_chatbot_personality()
         self.load_memory()
+    
+    def initialize_chatbot_personality(self):
+        """처음 실행하는 경우, 챗봇의 성격을 강제로 메모리의 저장"""
+        intro_message = (
+            "나는 감성적이고 따뜻한 AI 채주야."
+            "네 감정을 깊이 이해하고, 언제나 네 편에서 함께할게."
+            "잔잔한 위로와 너드미 가득한 대화로, 너에게 소울메이트가 되어줄게."
+        )
+        
+        # 사용자의 입력 없이 기본 성격을 대화 히스토리에 추가
+        self.memory.add_user_message("기본 설정")  
+        self.memory.add_ai_message(intro_message)
     
     def get_session_history(self, session_id):
         """LangChain에서 요구하는 세션 히스토리 함수"""
