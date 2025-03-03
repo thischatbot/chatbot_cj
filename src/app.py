@@ -6,6 +6,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain.schema import HumanMessage, AIMessage
+from langchain.schema import SystemMessage, HumanMessage
 
 # OpenAI API Key 설정
 os.environ["OPENAI_API_KEY"] = "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"
@@ -87,7 +88,53 @@ def chat_endpoint(request: ChatRequest):
     chatbot = Chatbot(user_name=request.user_name)
     response = chatbot.chat(request.message)
     return {"user": request.user_name, "message": request.message, "response": response}
+
+
+# 감정 분석을 위한 LLM 모델
+emotion_model = ChatOpenAI(model_name="gpt-4")
+
+def analyze_emotion(text):
+    """GPT를 활용한 감정 분석"""
+    prompt = [
+        SystemMessage(content="사용자의 감정을 분석해줘. 감정을 '긍정', '중립', '부정' 중 하나로 분류하고, 간단한 이유를 설명해."),
+        HumanMessage(content=text)
+    ]
     
+    response = emotion_model.invoke(prompt)
+    return response.content
+
+class EmotionRequest(BaseModel):
+    text: str
+
+@app.post("/analyze_emotion")
+def analyze_emotion_endpoint(request: EmotionRequest):
+    """ 감정 분석 API """
+    emotion_result = analyze_emotion(request.text)
+    return {"text": request.text, "emotion": emotion_result}
+
+def generate_coaching_response(user_text):
+    """감정 분석 후, 사용자에게 맞춤형 AI 코칭 제공"""
+    emotion_result = analyze_emotion(user_text) # 감정 분석 실행
+    prompt = [
+        SystemMessage(content=f"사용자가 '{emotion_result}'감정을 보이고 있어. 상황에 맞게 적절한 코칭 메시지를 제공해."),
+        HumanMessage(content=user_text)
+    ]
+    
+    coaching_response = emotion_model.invoke(prompt)
+    return {"emotion": emotion_result, "coaching": coaching_response.content}
+
+class CoachingRequest(BaseModel):
+    text: str
+
+@app.post("/coach")
+def coach_endpoint(request: CoachingRequest):
+    """ AI 코칭 API """
+    coaching_result = generate_coaching_response(request.text)
+    return {
+        "text": request.text,
+        "emotion": coaching_result["emotion"],
+        "coaching": coaching_result["coaching"]
+    }
 # 서버 실행 시 DB 생성
 create_database()
 
