@@ -8,6 +8,11 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain.schema import HumanMessage, AIMessage
 from langchain.schema import SystemMessage, HumanMessage
 
+from langchain.vectorstores import FAISS
+from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.chains.retrieval_qa.base import RetrievalQA
+from langchain.docstore.document import Document
+
 # OpenAI API Key 설정
 os.environ["OPENAI_API_KEY"] = "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"
 
@@ -34,6 +39,26 @@ def create_database():
     conn.commit()
     conn.close()
     print("SQLite DB 및 테이블 생성 완료")
+
+#RAG를 위한 FAISS 벡터 DB 설정
+def setup_faiss_rag():
+    """ 대화 기록을 벡터화하여 저장 """
+    conn = sqlite3.connect("chat_memory.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_name, chat_history FROM memory")
+    data = cursor.fetchall()
+    conn.close()
+    
+    documents = [Document(page_content=row[1], metadata={"user": row[0]}) for row in data]
+    vectorstore = FAISS.from_documents(documents, OpenAIEmbeddings())
+    return vectorstore.as_retriever()
+
+#RAG 기반 검색 & 답변 생성
+def get_rag_response(user_input):
+    retriver = setup_faiss_rag()
+    qa_chain = RetrievalQA.from_chain_type(llm, retriver=retriver)
+    response = qa_chain.run(user_input)
+    return response
 
 
 # API 요청 모델
@@ -112,7 +137,7 @@ emotion_model = ChatOpenAI(model_name="gpt-4")
 def analyze_emotion(text):
     """GPT를 활용한 감정 분석"""
     prompt = [
-        SystemMessage(content="사용자의 감정을 분석해줘. 감정을 '긍정', '중립', '부정' 중 하나로 분류하고, 간단한 이유를 설명해."),
+        SystemMessage(content="사용자의 감정을 분석해줘. 감정을 '강한 긍정', '약한 긍정', '중립', '약한 부정', '강한 부정' 중 하나로 분류하고, 간단한 이유를 설명해."),
         HumanMessage(content=text)
     ]
     
@@ -132,7 +157,7 @@ def generate_coaching_response(user_text):
     """감정 분석 후, 사용자에게 맞춤형 AI 코칭 제공"""
     emotion_result = analyze_emotion(user_text) # 감정 분석 실행
     prompt = [
-        SystemMessage(content=f"사용자가 '{emotion_result}'감정을 보이고 있어. 상황에 맞게 적절한 코칭 메시지를 제공해."),
+        SystemMessage(content=f"사용자가 '{emotion_result}'감정을 보이고 있어. 감정 강도에 맞게 적절한 코칭 메시지를 제공해."),
         HumanMessage(content=user_text)
     ]
     
@@ -151,6 +176,8 @@ def coach_endpoint(request: CoachingRequest):
         "emotion": coaching_result["emotion"],
         "coaching": coaching_result["coaching"]
     }
+
+
 # 서버 실행 시 DB 생성
 create_database()
 
