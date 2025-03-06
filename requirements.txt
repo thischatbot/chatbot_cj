@@ -2,3 +2,6 @@ fastapi
 uvicorn
 openai
 pydantic
+tensorflow-cpu
+transformers
+tf-keras

@@ -1,10 +1,12 @@
 from fastapi import FastAPI
+from fastapi import Query
 from pydantic import BaseModel
 import sqlite3
 from datetime import datetime
 import openai
 import os
 from typing import Dict
+from transformers import pipeline
 
 app = FastAPI()
 
@@ -23,56 +25,47 @@ openai.api_key = OPENAI_API_KEY
 DB_PATH = "/app/emotions.db"
 
 
-# SQLite DB 연결 (없으면 자동 생성됨)
-conn = sqlite3.connect("emotions.db")
-cursor = conn.cursor()
+# 데이터베이스 연결을 매번 열고 닫는 방식 개선 (싱글톤 패턴 적용)
 
-# 테이블 생성 (한 번만 실행하면 됨)
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS user_emotions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    emotion TEXT,
-    timestamp TEXT
-)               
-""")
-conn.commit()
+def get_db_connection():
+    """데이터베이스 연결을 관리하는 함수"""
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row # 결과를 딕셔너리처럼 사용 가능
+    cursor = conn.cursor()
+
+    # 테이블 생성 (한 번만 실행하면 됨)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_emotions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        emotion TEXT,
+        timestamp TEXT
+    )               
+    """)
+    conn.commit()
+    return conn
 
 # 요청 데이터 모델 정의 (JSON Body에서 받기)
 class EmotionRequest(BaseModel):
     user_name: str
     text: str
 
+# 감정 분석 모델 로드 (Hugging Face)
+emotion_classifier = pipeline("sentiment-analysis", model="nlptown/bert-base-multilingual-uncased-sentiment")
+
 def analyze_emotion(text):
-    """GPT API를 사용해 감정을 분석하는 함수"""
-    prompt = f"""
-    다음 문장의 감정을 분석해줘.
-    오직 아래 중 하나만 출력해:
-    - 긍정
-    - 부정
-    - 중립
+    """Hugging Face 모델을 사용해 감정을 분석하는 함수"""
+    result = emotion_classifier(text)[0]
+    sentiment = result["label"]
     
-    문장: "{text}"
-    답변:
-    """
+    # 감정 라벨을 단순화 (긍정 / 부정 / 중립)
     
-    response = openai.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "system", "content": "너는 감정 분석 AI다. 반드시 '긍정', '부정', '중립' 중 하나만 출력해."},
-                {"role": "user", "content": prompt}]
-    )
-    
-    result = response.choices[0].message.content.strip()
-    #print(f"GPT 함수 응답 결과 : {result}")
-    # 사용한 토큰 수 출력
-    #print(f"총 사용 토큰 수: {response.usage.total_tokens}")
-    
-    #혹시라도 GPT가 이상한 응답을 하면 기본값 설정
-    if result not in ["긍정", "부정", "중립"]:
-        print(f"⚠ 경고: GPT가 이상한 응답을 반환함 -> {result}") # 디버깅용
-        result = "중립"
-    
-    return result
+    if "1 star" in sentiment or "2 stars" in sentiment:
+        return "부정"
+    elif "4 stars" in sentiment or "5 stars" in sentiment:
+        return "긍정"
+    else:
+        return "중립"
 
 #감정 분석 API
 @app.post("/analyze_emotion/")
@@ -124,13 +117,15 @@ def get_user_emotions(user_name: str):
     } 
 
 @app.post("/chat")
-def chat_with_bot(request: EmotionRequest) -> Dict:
-    """GPT 챗봇과 대화하는 API (감정 분석 포함)"""
+def chat_with_bot(request: EmotionRequest, with_emotion_analysis) -> Dict:
+    """GPT 챗봇과 대화하는 API (옵션으로 감정 분석 포함 가능)"""
     user_name = request.user_name
     user_text = request.text
     
     #감정 분석
-    emotion_result = analyze_emotion(user_text)
+    emotion_result = None
+    if with_emotion_analysis:
+        emotion_result = analyze_emotion(user_text)
     
     #최근 감정 기록 가져오기
     conn = sqlite3.connect(DB_PATH)
@@ -192,3 +187,8 @@ def chat_with_bot(request: EmotionRequest) -> Dict:
         "bot_response": bot_response,
         "timestamp": timestamp
     }
+    
+@app.on_event("startup")
+def startup():
+    """FastAPI 서버가 시작될 때 데이터베이스를 초기화"""
+    get_db_connection() # 앱 실행 시 DB 테이블 보장
