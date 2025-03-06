@@ -1,34 +1,34 @@
-from fastapi import FastAPI
-from fastapi import Query
+from fastapi import FastAPI, Query, Depends
 from pydantic import BaseModel
 import sqlite3
 from datetime import datetime
 import openai
 import os
-from typing import Dict
+from typing import Dict, List
 from transformers import pipeline
-
-app = FastAPI()
+from dotenv import load_dotenv
 
 #OpenAI API 키 설정
 import openai
 import os
 
+#환경 변수 로드
+load_dotenv()
+
 # 환경변수에서 API 키 가져오기 (없으면 에러 방지)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+DB_PATH = os.getenv("DB_PATH", "emotions.db")
+
 if not OPENAI_API_KEY:
     raise ValueError("🚨 OPENAI_API_KEY 환경변수가 설정되지 않았습니다.")
 
-openai.api_key = OPENAI_API_KEY
+app = FastAPI()
 
 # SQListe DB 연결
-DB_PATH = "/app/emotions.db"
-
-
-# 데이터베이스 연결을 매번 열고 닫는 방식 개선 (싱글톤 패턴 적용)
 
 def get_db_connection():
     """데이터베이스 연결을 관리하는 함수"""
+    
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row # 결과를 딕셔너리처럼 사용 가능
     cursor = conn.cursor()
@@ -43,12 +43,13 @@ def get_db_connection():
     )               
     """)
     conn.commit()
+    
     return conn
 
-# 요청 데이터 모델 정의 (JSON Body에서 받기)
-class EmotionRequest(BaseModel):
-    user_name: str
-    text: str
+@app.on_event("startup")
+def startup():
+    """FastAPI 서버가 시작될 때 데이터베이스를 초기화"""
+    get_db_connection() # 앱 실행 시 DB 테이블 보장
 
 # 감정 분석 모델 로드 (Hugging Face)
 emotion_classifier = pipeline("sentiment-analysis", model="nlptown/bert-base-multilingual-uncased-sentiment")
@@ -67,22 +68,29 @@ def analyze_emotion(text):
     else:
         return "중립"
 
+# 요청 데이터 모델 정의 (JSON Body에서 받기)
+class EmotionRequest(BaseModel):
+    user_name: str
+    text: str
+
 #감정 분석 API
 @app.post("/analyze_emotion/")
 def analyze_emotion_api(request: EmotionRequest):
     """FastAPI 감정 분석 엔드포인트"""
-    user_name = request.user_name
-    text = request.text
-    emotion_result = analyze_emotion(text)
-    
-    # 감정 기록 저장
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cursor.execute("INSERT INTO user_emotions (name, emotion, timestamp) VALUES (?, ?, ?)",
-            (user_name, emotion_result, timestamp))
-    conn.commit()
-    conn.close()
+    try:
+        user_name = request.user_name
+        text = request.text
+        emotion_result = analyze_emotion(text)
+
+        # 감정 기록 저장
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("INSERT INTO user_emotions (name, emotion, timestamp) VALUES (?, ?, ?)",
+                (user_name, emotion_result, timestamp))
+        conn.commit()
+    except Exception as e:
+        return {"error": f"오류 발생: {e}"}
     
     return {
         "user": user_name,
@@ -113,11 +121,11 @@ def get_user_emotions(user_name: str):
     
     return {
         "user": user_name,
-        "emotions": [{"timestamp": row[0], "emotion": row[1]} for row in records]
+        "emotions": [{"timestamp": row["timestamp"], "emotion": row["emotion"]} for row in records]
     } 
 
 @app.post("/chat")
-def chat_with_bot(request: EmotionRequest, with_emotion_analysis) -> Dict:
+def chat_with_bot(request: EmotionRequest, with_emotion_analysis: bool = Query(False), db=Depends(get_db_connection)) -> Dict:
     """GPT 챗봇과 대화하는 API (옵션으로 감정 분석 포함 가능)"""
     user_name = request.user_name
     user_text = request.text
@@ -128,8 +136,7 @@ def chat_with_bot(request: EmotionRequest, with_emotion_analysis) -> Dict:
         emotion_result = analyze_emotion(user_text)
     
     #최근 감정 기록 가져오기
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    cursor = db.cursor()
     cursor.execute("""
                 SELECT timestamp, emotion FROM user_emotions
                 WHERE name = ?
@@ -139,12 +146,9 @@ def chat_with_bot(request: EmotionRequest, with_emotion_analysis) -> Dict:
     past_emotions = cursor.fetchall()
     
     #감정 맥락 반영한 프롬프트 생성
-    emotion_history = "\n".join([f"{row[0]} - {row[1]}" for row in past_emotions])
+    emotion_history = "\n".join([f"{row['timestamp']} - {row['emotion']}" for row in past_emotions])
     prompt = f"""
-    너는 감성적이고 배려 깊은 AI 소울메이트 챗봇이야. (MBTI: INFJ)
-    
-    너의 목표는 단순히 대답하는 것이 아니라 **사용자의 감정을 깊이 이해하고 관계를 발전시키는 것**이야.
-    
+    너는 감성적이고 배려 깊은 AI 소울메이트 챗봇이야.
     사용자의 감정 변화를 고려하여 친구처럼 반말체의 답변을 생성해줘.
     
     - 최근 감정 기록:
@@ -158,7 +162,7 @@ def chat_with_bot(request: EmotionRequest, with_emotion_analysis) -> Dict:
     3. 성장 지향적 접근 : 사용자의 성장을 도울 수 있는 조언이나 긍정적인 방향을 제시해
     4. 너드미 반영 : 부드러운 너드 감성의 유머를 섞어줘
     
-    너의 답변은 감성적이지만 과하게 감정적이거나 부담스럽지 않게 유지해 줘. 많은 질문을 던지지 말아줘.
+    너의 답변은 감성적이지만 많은 질문을 던지지 말아줘.
     이제 사용자의 감정에 맞춰 친근한 답변을 제공해 줘.
     """
     
@@ -178,7 +182,6 @@ def chat_with_bot(request: EmotionRequest, with_emotion_analysis) -> Dict:
     cursor.execute("INSERT INTO user_emotions (name, emotion, timestamp) VALUES (?, ?, ?)",
                 (user_name, emotion_result, timestamp))
     conn.commit()
-    conn.close()
     
     return {
         "user": user_name,
@@ -187,8 +190,3 @@ def chat_with_bot(request: EmotionRequest, with_emotion_analysis) -> Dict:
         "bot_response": bot_response,
         "timestamp": timestamp
     }
-    
-@app.on_event("startup")
-def startup():
-    """FastAPI 서버가 시작될 때 데이터베이스를 초기화"""
-    get_db_connection() # 앱 실행 시 DB 테이블 보장
