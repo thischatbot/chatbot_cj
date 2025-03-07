@@ -1,8 +1,10 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
+from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.schema import ForeignKey
 from datetime import datetime
 import openai
 import os
@@ -15,7 +17,7 @@ load_dotenv()
 
 # API Key and Database Path
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-DB_URL = os.getenv("DB_URL", "sqlite+aiosqlite:///./emotions.db")
+DB_URL = os.getenv("DB_URL", "sqlite+aiosqlite:///./client.db")
 
 if not OPENAI_API_KEY:
     raise ValueError("🚨 OPENAI_API_KEY is missing.")
@@ -33,12 +35,37 @@ Base = declarative_base()
 # Define DB Model (SQLAlchemy ORM)
 from sqlalchemy import Column, Integer, String
 
-class UserEmotion(Base):
-    __tablename__ = "user_emotions"
+class Client(Base):
+    __tablename__ = "clients"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True, nullable=False)
-    emotion = Column(String, index=True, nullable=False)
+    company_name = Column(String, index=True, nullable=False)
+    contact_email = Column(String, index=True, nullable=False)
+    created_at = Column(String, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"), nullable=False)
+
+class Users(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False, unique=True)
+    created_at = Column(String, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"), nullable=False)
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    input_text = Column(String, nullable=False)
+    bot_response = Column(String, nullable=False)
+    timestamp = Column(String, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"), nullable=False)
+    
+class Emotion(Base):
+    __tablename__ = "emotions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False)
+    emotion = Column(String, nullable=False)
     timestamp = Column(String, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"), nullable=False)
 
 # Create tables on startup
@@ -86,7 +113,7 @@ async def analyze_emotion_api(request: EmotionRequest, db: AsyncSession = Depend
         emotion_result = analyze_emotion(text)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        new_emotion = UserEmotion(name=user_name, emotion=emotion_result, timestamp=timestamp)
+        new_emotion = Emotion(name=user_name, emotion=emotion_result, timestamp=timestamp)
         db.add(new_emotion)
         async with db as session:
             session.add(new_emotion)
@@ -103,7 +130,7 @@ async def analyze_emotion_api(request: EmotionRequest, db: AsyncSession = Depend
 async def get_user_emotions(user_name: str, db: AsyncSession = Depends(get_db)):
     """Fetch last 5 emotion records for a user."""
     records = await db.execute(text(
-        "SELECT timestamp, emotion FROM user_emotions WHERE name = :name ORDER BY timestamp DESC LIMIT 5"
+        "SELECT timestamp, emotion FROM emotions WHERE name = :name ORDER BY timestamp DESC LIMIT 5"
         ),
         {"name": user_name}
     )
@@ -114,51 +141,132 @@ async def get_user_emotions(user_name: str, db: AsyncSession = Depends(get_db)):
 
     return {"status": "success", "data": {"user": user_name, "emotions": [{"timestamp": row[0], "emotion": row[1]} for row in result]}}
 
+CUSTOM_PROMPT = """
+너는 기업 고객을 위한 AI 고객 상담 챗봇이야.
+
+🌟 **역할**:
+- 고객의 질문에 친절하고 정확하게 응답해.
+- 감정 분석을 활용해, 고객이 불편함을 느끼지 않도록 배려하면서 답변해.
+- 필요하면 기업 맞춤형 솔루션을 추천해.
+
+📌 **기본 규칙**:
+1. **간결하고 명확한 답변을 제공해.** (불필요한 장황한 설명 X)
+2. **기업 고객을 존중하는 비즈니스 톤을 유지해.** ("~입니다", "~할 수 있습니다" 같은 문체 사용)
+3. **사용자의 최근 감정 기록을 반영하여 응대해.** (화난 고객에게는 더 친절하게, 긍정적인 고객에게는 자연스럽게 응대)
+4. **구체적인 정보 요청 시, 관련 정보를 정리하여 제공해.**
+
+📌 **고객의 최근 감정 데이터**:
+{emotion_history}
+
+📌 **고객 질문**:
+"{user_text}"
+
+💡 **이제 위 정보를 반영하여, 최적의 답변을 생성해줘.**
+"""
+
 # GPT Chatbot API
 @app.post("/chat", response_model=EmotionResponse, summary="Chat with AI")
 async def chat_with_bot(request: EmotionRequest, with_emotion_analysis: bool = Query(False), db: AsyncSession = Depends(get_db)):
-    """AI chatbot with optional emotion analysis."""
+    """B2B 고객 상담 챗봇 API"""
     user_name = request.user_name
     user_text = request.text
 
-    # Emotion analysis
+    # 사용자 조회 (없으면 자동 등록)
+    user_query = await db.execute(select(Users).where(Users.name == user_name))
+    user = user_query.scalar_one_or_none()
+    
+    if not user:
+        # 자동 사용자 등록
+        new_user = Users(client_id=1, name=user_name, email=f"{user_name.lower().replace(' ', '_')}@example.com")
+        db.add(new_user)
+        await db.commit()
+        await db.refresh(new_user)
+        user = new_user # 새 사용자로 업데이트
+    
+    # 감정 분석 수행
     emotion_result = None
     if with_emotion_analysis:
         emotion_result = analyze_emotion(user_text)
 
-    # Fetch past emotions
+    # Fetch past emotions (user_id가 존재하는지 확실히 확인)
+    if user.id is None:
+        raise HTTPException(status_code=404, detail="사용자 ID 조회 실패")
+    
     past_emotions = await db.execute(text(
-        "SELECT timestamp, emotion FROM user_emotions WHERE name = :name ORDER BY timestamp DESC LIMIT 3"),
-        {"name": user_name}
+        "SELECT timestamp, emotion FROM emotions WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = :user_id) ORDER BY timestamp DESC LIMIT 3"),
+        {"user_id": user.id}
     )
-    past_emotion_list = past_emotions.fetchall()
-    emotion_history = "\n".join([f"{row[0]} - {row[1]}" for row in past_emotion_list])
+    emotion_history = "\n".join([f"{row[0]} - {row[1]}" for row in past_emotions.fetchall()])
 
     # ChatGPT prompt
     prompt = f"""
-    You are a supportive AI friend. Consider the user's emotions when responding.
-
-    - Past emotions:
-    {emotion_history}
-
-    User input: "{user_text}"
+    {CUSTOM_PROMPT.format(emotion_history=emotion_history, user_text=user_text)}
     """
 
     # OpenAI API Call
     response = openai.chat.completions.create(
         model="gpt-3.5-turbo",
-        messages=[{"role": "system", "content": "You are an AI that understands emotions."}, {"role": "user", "content": prompt}]
+        messages=[{"role": "system", "content": "너는 기업 고객 상담을 전문으로 하는 AI 챗봇이야."}, {"role": "user", "content": prompt}]
     )
 
     bot_response = response.choices[0].message.content.strip()
 
-    # Save emotion result
+    # Save conversation result
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    new_emotion = UserEmotion(name=user_name, emotion=emotion_result, timestamp=timestamp)
-    db.add(new_emotion)
-    async with db as session:
-        session.add(new_emotion)
-        await session.commit()
+    conversation = Conversation(user_id=user.id, input_text=user_text, bot_response=bot_response, timestamp=timestamp)
+    db.add(conversation)
+    await db.flush()
+    
+    if emotion_result:
+        emotion = Emotion(conversation_id=conversation.id, emotion=emotion_result, timestamp=timestamp)
+        db.add(emotion)
+    
     await db.commit()
 
-    return {"status": "success", "data": {"user": user_name, "input_text": user_text, "analyzed_emotion": emotion_result, "bot_response": bot_response, "timestamp": timestamp}}
+    return {
+        "status": "success", 
+            "data": {
+                "user": user_name,
+                "input_text": user_text,
+                "analyzed_emotion": emotion_result,
+                "bot_response": bot_response,
+                "timestamp": timestamp
+                }
+            }
+
+class UserRegisterRequest(BaseModel):
+    company_name : str
+    user_name : str
+    user_email : str
+
+@app.post("/register_user/", response_model=EmotionResponse, summary="새 사용자 등록")
+async def register_user(request: UserRegisterRequest, db: AsyncSession = Depends(get_db)):
+    """새로운 사용자 등록 API"""
+    company_name = request.company_name
+    user_name = request.user_name
+    user_email = request.user_email
+    
+    # 기업(Client) 조회 (없으면 새로 생성)
+    client_query = await db.execute(select(Client).where(Client.company_name == company_name))
+    client = client_query.scalars().first()
+    
+    if not client:
+        client = Client(company_name=company_name, contact_email=user_email)
+        db.add(client)
+        await db.commit()
+        await db.refresh(client)
+    
+    # 사용자(User) 조회 (없으면 새로 생성)
+    user_query = await db.execute(select(Users).where(Users.email))
+    existing_user = user_query.scalars().first()
+    
+    if existing_user:
+        return {"status": "success", "data": {"message": "이미 등록된 사용자입니다."}}
+    
+    new_user = Users(client_id=client.id, name=user_name, email=user_email)
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    user = new_user # 새 사용자로 업데이트
+
+    return {"status": "success", "data": {"message": f"{user_name}님이 성공적으로 등록되었습니다."}}
