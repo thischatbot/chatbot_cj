@@ -17,7 +17,7 @@ load_dotenv()
 
 # API Key and Database Path
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-DB_URL = os.getenv("DB_URL", "sqlite+aiosqlite:///./client.db")
+DB_URL = os.getenv("DB_URL")
 
 if not OPENAI_API_KEY:
     raise ValueError("🚨 OPENAI_API_KEY is missing.")
@@ -113,12 +113,11 @@ async def analyze_emotion_api(request: EmotionRequest, db: AsyncSession = Depend
         emotion_result = analyze_emotion(text)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        new_emotion = Emotion(name=user_name, emotion=emotion_result, timestamp=timestamp)
+        new_emotion = Emotion(conversation_id=1, emotion=emotion_result, timestamp=timestamp)
         db.add(new_emotion)
         async with db as session:
             session.add(new_emotion)
             await session.commit()
-        await db.commit()
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {e}")
@@ -192,9 +191,12 @@ async def chat_with_bot(request: EmotionRequest, with_emotion_analysis: bool = Q
     if user.id is None:
         raise HTTPException(status_code=404, detail="사용자 ID 조회 실패")
     
-    past_emotions = await db.execute(text(
-        "SELECT timestamp, emotion FROM emotions WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = :user_id) ORDER BY timestamp DESC LIMIT 3"),
-        {"user_id": user.id}
+    past_emotions = await db.execute(
+        select(Emotion.timestamp, Emotion.emotion)
+        .join(Conversation, Emotion.conversation_id == Conversation.id)
+        .where(Conversation.user_id == user.id)
+        .order_by(Emotion.timestamp.desc())
+        .limit(3)
     )
     emotion_history = "\n".join([f"{row[0]} - {row[1]}" for row in past_emotions.fetchall()])
 
@@ -202,11 +204,17 @@ async def chat_with_bot(request: EmotionRequest, with_emotion_analysis: bool = Q
     prompt = f"""
     {CUSTOM_PROMPT.format(emotion_history=emotion_history, user_text=user_text)}
     """
+    messages = [
+        {"role": "system", "content": "너는 기업 고객 상담을 전문으로 하는 AI 챗봇이야."},
+        {"role": "user", "content": user_text}
+    ]
+    if emotion_history:
+        messages.insert(1, {"role": "assistant", "content": f"최근 감정 기록: {emotion_history}"})
 
     # OpenAI API Call
     response = openai.chat.completions.create(
         model="gpt-3.5-turbo",
-        messages=[{"role": "system", "content": "너는 기업 고객 상담을 전문으로 하는 AI 챗봇이야."}, {"role": "user", "content": prompt}]
+        messages=messages
     )
 
     bot_response = response.choices[0].message.content.strip()
@@ -257,7 +265,7 @@ async def register_user(request: UserRegisterRequest, db: AsyncSession = Depends
         await db.refresh(client)
     
     # 사용자(User) 조회 (없으면 새로 생성)
-    user_query = await db.execute(select(Users).where(Users.email))
+    user_query = await db.execute(select(Users).where(Users.email == user_email))
     existing_user = user_query.scalars().first()
     
     if existing_user:
