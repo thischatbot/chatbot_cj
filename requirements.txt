@@ -1,7 +1,27 @@
+# FastAPI Core
 fastapi
-uvicorn
+uvicorn[standard]
+
+# OpenAI API
 openai
+
+# Pydantic for data validation
 pydantic
-tensorflow-cpu
+
+# Hugging Face Transformers for sentiment analysis
 transformers
+
+# TensorFlow (only for CPU)
+tensorflow-cpu
 tf-keras
+
+# Environment Variables
+python-dotenv
+
+# Database (SQLAlchemy ORM + Async Support)
+sqlalchemy
+asyncpg        # PostgreSQL Async Driver
+aiosqlite      # SQLite Async Driver
+
+# Optional: Gunicorn for Production (If Deploying)
+gunicorn
