@@ -135,7 +135,8 @@ class Chatbot:
         self.memory = ChatMessageHistory() #대화 기록 저장용
         self.memory_buffer : ConversationBufferMemory = ConversationBufferMemory(
             memory_key="chat_history",
-            return_messages=True
+            return_messages=True,
+            max_token_limit=500
         )
     
         if not self.memory_buffer.chat_memory.messages:
@@ -238,17 +239,26 @@ class Chatbot:
 
         retriever = await setup_faiss_rag(db)
         qa_chain = RetrievalQA.from_chain_type(llm, retriever=retriever, memory=self.memory_buffer)
+        print(f"✅ RetrievalQA 메모리 상태: {qa_chain.memory.chat_memory.messages}")
 
         #RAG 실행
-        docs = retriever.get_relevant_documents(user_input)
+        docs = retriever.invoke(user_input)
+        print(f"🔎 RAG 반환 문서: {docs}")
 
         if docs:
-            response = qa_chain.run(user_input)
+            response = qa_chain.invoke(user_input)
+            print(f"✅ RAG 결과 기반 응답: {response}")
         else:
             response = llm(user_input).content
+            print(f"⚠️ RAG 실패 → 기본 LLM 응답: {response}")
 
         # AI 응답 추가
-        self.memory_buffer.chat_memory.messages.append(AIMessage(content=response))
+        if isinstance(response, dict) :
+            response_content = response.get("result") or str(response)
+        else:
+            response_content = str(response)
+        
+        self.memory_buffer.chat_memory.messages.append(AIMessage(content=response_content))
 
         # 저장 전 성격 메시지 유지
         await self.save_memory(db)
@@ -422,5 +432,6 @@ async def setup_faiss_rag(db: AsyncSession):
 
     # FAISS 벡터 DB 생성
     vectorstore = FAISS.from_documents(documents, OpenAIEmbeddings())
+    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5})
     print("✅ 벡터 DB 생성 완료")
-    return vectorstore.as_retriever()
+    return retriever
