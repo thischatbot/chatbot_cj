@@ -17,7 +17,7 @@ load_dotenv()
 
 # API Key and Database Path
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-DB_URL = os.getenv("DB_URL")
+DB_URL = os.getenv("DB_PATH", "sqlite+aiosqlite:///./client.db")
 
 if not OPENAI_API_KEY:
     raise ValueError("🚨 OPENAI_API_KEY is missing.")
@@ -205,11 +205,11 @@ async def chat_with_bot(request: EmotionRequest, with_emotion_analysis: bool = Q
     {CUSTOM_PROMPT.format(emotion_history=emotion_history, user_text=user_text)}
     """
     messages = [
-        {"role": "system", "content": "너는 기업 고객 상담을 전문으로 하는 AI 챗봇이야."},
+        {"role": "system", "content": "You are an AI chatbot specializing in corporate customer consulting."},
         {"role": "user", "content": user_text}
     ]
     if emotion_history:
-        messages.insert(1, {"role": "assistant", "content": f"최근 감정 기록: {emotion_history}"})
+        messages.insert(1, {"role": "assistant", "content": f"Recent emotional records: {emotion_history}"})
 
     # OpenAI API Call
     response = openai.chat.completions.create(
