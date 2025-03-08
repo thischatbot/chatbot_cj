@@ -154,12 +154,18 @@ class Chatbot:
             "잔잔한 위로와 너드미 가득한 대화로, 너에게 소울메이트가 되어줄게."
             "난 반말, 구어체로 말해."
         )
-        
-        # 성격 메시지가 이미 추가되어 있는지 확인 후 중복 추가 방지
-        if not any(isinstance(msg, SystemMessage) for msg in self.memory_buffer.chat_memory.messages):
+
+        # 성격 메시지가 이미 추가되었는지 확인 후 중복 추가 방지
+        if not any(
+            isinstance(msg, SystemMessage) and msg.content == "기본 설정"
+            for msg in self.memory_buffer.chat_memory.messages
+        ):
             system_message = SystemMessage(content="기본 설정")
             ai_message = AIMessage(content=intro_message)
-            self.memory_buffer.chat_memory.messages.extend([system_message, ai_message])
+            self.memory_buffer.chat_memory.messages.insert(0, system_message)   # 성격 메시지를 가장 처음에 주입
+            self.memory_buffer.chat_memory.messages.insert(0, ai_message)
+
+        print(f"✅ 성격 주입 상태: {self.memory_buffer.chat_memory.messages}")
     
     def get_session_history(self, session_id):
         """LangChain에서 요구하는 세션 히스토리 함수"""
@@ -198,7 +204,6 @@ class Chatbot:
 
         if record:
             try:
-                # 기존 성격 메시지가 있으면 덮어쓰지 않음
                 loaded_messages = json.loads(record)
                 self.memory_buffer.chat_memory.messages = [
                     AIMessage(content=msg["content"]) if msg["type"] == "AIMessage" 
@@ -208,43 +213,48 @@ class Chatbot:
                     for msg in loaded_messages
                 ]
 
-                # 성격 메시지가 없으면 기본 설정 추가
+                # 기존 성격 메시지가 없으면 추가
                 if not any(isinstance(msg, SystemMessage) for msg in self.memory_buffer.chat_memory.messages):
+                    print("⚠️ 성격 메시지 없음 → 강제 주입")
                     self.set_chatbot_personality()
-                    
+
             except json.JSONDecodeError:
                 self.memory_buffer.chat_memory.messages = []
                 self.set_chatbot_personality()
         else:
             # 기록이 없으면 성격 설정
             self.set_chatbot_personality()
+        
+        print(f"✅ 메모리 로드 상태: {self.memory_buffer.chat_memory.messages}")
 
-                
+
     
     async def chat(self, user_input, db: AsyncSession):
         """최신 LangChain 방식으로 대화 실행"""
         await self.load_memory(db)  # 대화 시작 전에 히스토리 로드
-        
+
         # 사용자 입력 추가
         self.memory_buffer.chat_memory.messages.append(HumanMessage(content=user_input))
-        
+
         retriever = await setup_faiss_rag(db)
         qa_chain = RetrievalQA.from_chain_type(llm, retriever=retriever, memory=self.memory_buffer)
-        
+
+        #RAG 실행
         docs = retriever.get_relevant_documents(user_input)
-        
+
         if docs:
             response = qa_chain.run(user_input)
         else:
             response = llm(user_input).content
-        
+
         # AI 응답 추가
         self.memory_buffer.chat_memory.messages.append(AIMessage(content=response))
-        
+
         # 저장 전 성격 메시지 유지
         await self.save_memory(db)
-        
+
         return response
+
 
 
 
@@ -385,22 +395,32 @@ def coach_endpoint(request: CoachingRequest):
 
 #RAG를 위한 FAISS 벡터 DB 설정
 async def setup_faiss_rag(db: AsyncSession):
-    """ 대화 기록을 벡터화하여 저장 """
+    """대화 기록을 벡터화하여 저장"""
     result = await db.execute(select(Memory.user_name, Memory.chat_history))
     data = result.fetchall()
-    
+
     documents = []
     for row in data:
         user_name, chat_history = row
-        emotion = analyze_emotion(chat_history)
-        doc = Document(page_content=chat_history, metadata={"user": user_name, "emotion": emotion})
-        documents.append(doc)
+        try:
+            messages = json.loads(chat_history)
+            for msg in messages:
+                doc = Document(
+                    page_content=msg["content"],
+                    metadata={"user": user_name, "type": msg["type"]}
+                )
+                documents.append(doc)
+        except json.JSONDecodeError:
+            continue
 
     if not documents:
+        print("⚠️ 벡터 DB 비어 있음 → 빈 retriever 반환")
         class EmptyRetriever(BaseRetriever):
-            def get_relevant_documents(self, query : str):
+            def get_relevant_documents(self, query: str):
                 return []
         return EmptyRetriever()
-    
+
+    # FAISS 벡터 DB 생성
     vectorstore = FAISS.from_documents(documents, OpenAIEmbeddings())
+    print("✅ 벡터 DB 생성 완료")
     return vectorstore.as_retriever()
