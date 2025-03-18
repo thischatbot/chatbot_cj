@@ -1,6 +1,3 @@
-<!-- Tracking Token -->
-![Security Notice](https://canarytokens.org/nest/assets/web-CYHNWdqG.png) Unauthorized use prohibited.
-
 ## chatbot_cj
 https://canarytokens.org/nest/assets/web-CYHNWdqG.png
 
@@ -15,3 +12,6 @@ docker run -d -p 8000:8000 --name chat-container \
     chat-api
     
 * OPENAI API KEY가 없으면 안됩니다!!!
+
+<!-- Tracking Token -->
+![Security Notice](https://canarytokens.org/nest/assets/web-CYHNWdqG.png) Unauthorized use prohibited.
