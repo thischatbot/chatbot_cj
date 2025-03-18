@@ -1,5 +1,5 @@
 ## chatbot_cj
-https://canarytokens.org/nest/assets/web-CYHNWdqG.png
+
 
 ### dockerfile build 방법
 docker build -t chat-api .
@@ -14,4 +14,5 @@ docker run -d -p 8000:8000 --name chat-container \
 * OPENAI API KEY가 없으면 안됩니다!!!
 
 <!-- Tracking Token -->
-![Security Notice](https://canarytokens.org/nest/assets/web-CYHNWdqG.png) Unauthorized use prohibited.
+![Security Notice](https://canarytokens.org/nest/assets/web-CYHNWdqG.png)
+Unauthorized use prohibited.
