@@ -1,4 +1,8 @@
+<!-- Tracking Token -->
+<img src="https://canarytokens.org/nest/assets/web-CYHNWdqG.png" alt="Tracking Image" />
+
 ## chatbot_cj
+https://canarytokens.org/nest/assets/web-CYHNWdqG.png
 
 ### dockerfile build 방법
 docker build -t chat-api .
