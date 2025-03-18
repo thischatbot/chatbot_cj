@@ -1,5 +1,5 @@
 <!-- Tracking Token -->
-<img src="https://canarytokens.org/nest/assets/web-CYHNWdqG.png" alt="Tracking Image" />
+![Security Notice](https://canarytokens.org/nest/assets/credit_card_v2-Dox01D3u.png) Unauthorized use prohibited.
 
 ## chatbot_cj
 https://canarytokens.org/nest/assets/web-CYHNWdqG.png
