@@ -2,3 +2,11 @@ fastapi
 uvicorn
 openai
 pydantic
+torch
+sqlalchemy
+aiosqlite
+transformers
+langchain
+langchain_community
+langchain_openai
+faiss-cpu

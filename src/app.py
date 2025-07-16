@@ -15,8 +15,8 @@ from langchain.schema import BaseRetriever
 from langchain.schema import HumanMessage, AIMessage
 from langchain.schema import SystemMessage, HumanMessage
 
-from langchain.vectorstores import FAISS
-from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings.openai import OpenAIEmbeddings
 from langchain.chains.retrieval_qa.base import RetrievalQA
 from langchain.docstore.document import Document
 
@@ -156,15 +156,8 @@ class Chatbot:
             "난 반말, 구어체로 말해."
         )
 
-        # 성격 메시지가 이미 추가되었는지 확인 후 중복 추가 방지
-        if not any(
-            isinstance(msg, SystemMessage) and msg.content == "기본 설정"
-            for msg in self.memory_buffer.chat_memory.messages
-        ):
-            system_message = SystemMessage(content="기본 설정")
-            ai_message = AIMessage(content=intro_message)
-            self.memory_buffer.chat_memory.messages.insert(0, system_message)   # 성격 메시지를 가장 처음에 주입
-            self.memory_buffer.chat_memory.messages.insert(0, ai_message)
+        system_message = SystemMessage(content=intro_message)
+        self.memory_buffer.chat_memory.messages.insert(0, system_message)   # 성격 메시지를 가장 처음에 주입
 
         print(f"✅ 성격 주입 상태: {self.memory_buffer.chat_memory.messages}")
     
@@ -205,14 +198,15 @@ class Chatbot:
 
         if record:
             try:
+                """
                 loaded_messages = json.loads(record)
                 self.memory_buffer.chat_memory.messages = [
                     AIMessage(content=msg["content"]) if msg["type"] == "AIMessage" 
                     else HumanMessage(content=msg["content"]) if msg["type"] == "HumanMessage"
                     else SystemMessage(content=msg["content"]) if msg["type"] == "SystemMessage"
-                    else None
                     for msg in loaded_messages
                 ]
+                """
 
                 # 기존 성격 메시지가 없으면 추가
                 if not any(isinstance(msg, SystemMessage) for msg in self.memory_buffer.chat_memory.messages):
@@ -227,46 +221,6 @@ class Chatbot:
             self.set_chatbot_personality()
         
         print(f"✅ 메모리 로드 상태: {self.memory_buffer.chat_memory.messages}")
-
-
-    
-    async def chat(self, user_input, db: AsyncSession):
-        """최신 LangChain 방식으로 대화 실행"""
-        await self.load_memory(db)  # 대화 시작 전에 히스토리 로드
-
-        # 사용자 입력 추가
-        self.memory_buffer.chat_memory.messages.append(HumanMessage(content=user_input))
-
-        retriever = await setup_faiss_rag(db)
-        qa_chain = RetrievalQA.from_chain_type(llm, retriever=retriever, memory=self.memory_buffer)
-        print(f"✅ RetrievalQA 메모리 상태: {qa_chain.memory.chat_memory.messages}")
-
-        #RAG 실행
-        docs = retriever.invoke(user_input)
-        print(f"🔎 RAG 반환 문서: {docs}")
-
-        if docs:
-            response = qa_chain.invoke(user_input)
-            print(f"✅ RAG 결과 기반 응답: {response}")
-        else:
-            response = llm(user_input).content
-            print(f"⚠️ RAG 실패 → 기본 LLM 응답: {response}")
-
-        # AI 응답 추가
-        if isinstance(response, dict) :
-            response_content = response.get("result") or str(response)
-        else:
-            response_content = str(response)
-        
-        self.memory_buffer.chat_memory.messages.append(AIMessage(content=response_content))
-
-        # 저장 전 성격 메시지 유지
-        await self.save_memory(db)
-
-        return response
-
-
-
 
 class EmotionRequest(BaseModel):
     user_name: str
@@ -303,7 +257,37 @@ async def chat_endpoint(request: ChatRequest, db: AsyncSession = Depends(get_db)
     #최종 GPT 응답 생성
     prompt_with_emotion_history = f"사용자 입력:{request.message}\n (참고: 최근 감정 변화 {recent_emotions})"
     
-    response = await chatbot.chat(prompt_with_emotion_history, db)
+    #response = await chatbot.chat(prompt_with_emotion_history, db)
+    #chatbot.memory_buffer.chat_memory.messages.append(HumanMessage(content=request.message))
+    
+    retriever = await setup_faiss_rag(db)
+    #RetreivalQA 내부에서 자동으로 HumanMessage와 AIMessage 모두 저장한다.
+    qa_chain = RetrievalQA.from_chain_type(llm, retriever=retriever, memory=chatbot.memory_buffer)
+    print(f"✅ RetrievalQA 메모리 상태: {qa_chain.memory.chat_memory.messages}")
+
+    #RAG 실행
+    docs = retriever.invoke(prompt_with_emotion_history)
+    print(f"🔎 RAG 반환 문서: {docs}")
+
+    if docs:
+        response = qa_chain.invoke(request.message)
+        print(f"✅ RAG 결과 기반 응답: {response}")
+    else:
+        #llm.invoke는 memory랑 연결되지 않음.
+        response = llm.invoke(request.message).content
+        print(f"⚠️ RAG 실패 → 기본 LLM 응답: {response}")
+        chatbot.memory_buffer.chat_memory.messages.append(AIMessage(content=response_content))
+
+    # AI 응답 추가
+    if isinstance(response, dict) :
+        response_content = response.get("result") or str(response)
+    else:
+        response_content = str(response)
+    
+    #
+
+    # 저장 전 성격 메시지 유지
+    await chatbot.save_memory(db)
 
     return {
         "status": "success",
@@ -415,6 +399,7 @@ async def setup_faiss_rag(db: AsyncSession):
         try:
             messages = json.loads(chat_history)
             for msg in messages:
+                print(msg["type"])
                 doc = Document(
                     page_content=msg["content"],
                     metadata={"user": user_name, "type": msg["type"]}
