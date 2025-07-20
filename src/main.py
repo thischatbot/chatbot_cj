@@ -5,23 +5,22 @@ from datetime import datetime
 import openai
 import os
 from typing import Dict
+from dotenv import load_dotenv
 
-app = FastAPI()
+# Load environment variables
+load_dotenv()
 
-#OpenAI API 키 설정
-import openai
-import os
-
-# 환경변수에서 API 키 가져오기 (없으면 에러 방지)
+# API Key and Database Path
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+DB_URL = os.getenv("DB_PATH", "sqlite+aiosqlite:///client.db")
+
 if not OPENAI_API_KEY:
-    raise ValueError("🚨 OPENAI_API_KEY 환경변수가 설정되지 않았습니다.")
+    raise ValueError("🚨 OPENAI_API_KEY is missing.")
 
-openai.api_key = OPENAI_API_KEY
+openai.api_key=OPENAI_API_KEY
 
-# SQListe DB 연결
-DB_PATH = "/app/emotions.db"
-
+#FastAPI app
+app = FastAPI(title="Emotion AI Chatbot API", version="1.0")
 
 # SQLite DB 연결 (없으면 자동 생성됨)
 conn = sqlite3.connect("emotions.db")
