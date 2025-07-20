@@ -143,6 +143,7 @@ class Chatbot:
             self.set_chatbot_personality()
     
     async def async_init(self, db: AsyncSession):
+        """챗봇 초기화 및 메모리 로드"""
         await self.load_memory(db)
         if not self.memory.messages:
             self.set_chatbot_personality()
@@ -230,10 +231,28 @@ class EmotionResponse(BaseModel):
     status: str
     data: Dict
 
-# GPT + Langchain Chatbot API
+# Chat API
+@app.get("/", summary="Health Check")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "ok", "message": "Emotion AI Chatbot API is running."}
+
 @app.post("/chat", response_model=EmotionResponse, summary="Chat with AI")
 async def chat_endpoint(request: ChatRequest, db: AsyncSession = Depends(get_db)):
+    """Chat with AI and analyze user emotion"""
+    if not request.user_name or not request.message:
+        raise HTTPException(status_code=400, detail="User name and message are required.")
+    # 챗봇 초기화
+    print(f"🔍 사용자 요청: {request.user_name} - {request.message}")
+    if not request.user_name.strip():
+        raise HTTPException(status_code=400, detail="User name cannot be empty.")
+    if not request.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    # 챗봇 인스턴스 생성 및 초기화
+    print(f"🔧 챗봇 초기화: {request.user_name}")
     chatbot = Chatbot(user_name=request.user_name)
+    # 챗봇 메모리 초기화
+    print(f"🧠 챗봇 메모리 초기화: {request.user_name}"
     await chatbot.async_init(db)
     
     #사용자 감정 분석
